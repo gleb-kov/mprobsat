@@ -3,4 +3,4 @@ project(mprobsat)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(mprobsat main.cpp)
+add_executable(mprobsat main.cpp bit_vector.h)

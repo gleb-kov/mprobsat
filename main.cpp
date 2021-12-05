@@ -1,3 +1,5 @@
+#include "bit_vector.h"
+
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -12,7 +14,7 @@ constexpr size_t MAX_CLAUSE_LENGTH = 10000; //maximum number of literals per cla
 constexpr size_t STOREBLOCK = 20000;
 constexpr int64_t maxTries = std::numeric_limits<int64_t>::max();
 constexpr int64_t maxFlips = std::numeric_limits<int64_t>::max();
-constexpr int fct = 0; //function to use 0= poly 1=exp
+constexpr bool use_poly_func = true; // exp otherwise
 constexpr bool caching = true;
 constexpr double eps = 1.0;
 
@@ -29,7 +31,7 @@ char *atom;
  * The clause and literal numbering start both at 1. literal and clause 0 0 is sentinel*/
 int **clause;
 /**min and max clause length*/
-int maxClauseSize;
+size_t maxClauseSize;
 /** The number of occurrence of each literal.*/
 size_t *numOccurrence;
 /** The clauses where each literal occurs. For literal i : occurrence[i+MAXATOMS][j] gives the clause =
@@ -47,7 +49,7 @@ size_t *falseClause;
 /** whereFalse[i]=j tells that clause i is listed in falseClause at position j.  */
 size_t *whereFalse;
 /** The number of true literals in each clause. */
-unsigned short *numTrueLit;
+size_t *numTrueLit;
 /*the number of clauses the variable i will make unsat if flipped*/
 int *breaks;
 /** critVar[i]=j tells that for clause i the variable j is critically responsible for satisfying i.*/
@@ -85,7 +87,7 @@ void allocateMemory() {
     // Allocating memory for the assignment dependent data.
     falseClause = (size_t *) malloc(sizeof(size_t) * (numClauses + 1));
     whereFalse = (size_t *) malloc(sizeof(size_t) * (numClauses + 1));
-    numTrueLit = (unsigned short *) malloc(sizeof(unsigned short) * (numClauses + 1));
+    numTrueLit = (size_t *) malloc(sizeof(size_t) * (numClauses + 1));
 
     probs = (double *) malloc(sizeof(double) * (numVars + 1));
     breaks = (int *) malloc(sizeof(int) * (numVars + 1));
@@ -118,7 +120,7 @@ void parseFile(const char* fileName) {
     int *tempClause = nullptr;
     int j;
     int lit;
-    int clauseSize;
+    size_t clauseSize;
     for (size_t i = 0; i < numLiterals + 1; ++i) {
         numOccurrence[i] = 0;
         numOccurrenceT[i] = 0;
@@ -135,7 +137,7 @@ void parseFile(const char* fileName) {
         do {
             fscanf(fp, "%i", &lit);
             if (lit != 0) {
-                clauseSize++;
+                ++clauseSize;
                 *tempClause++ = lit;
                 numOccurrenceT[numVars + lit]++;
             } else {
@@ -201,8 +203,7 @@ void init() {
     }
 }
 
-/** Checks whether the assignment from atom is a satisfying assignment.*/
-int checkAssignment() {
+void checkAssignment() {
     int lit;
     for (size_t i = 1; i <= numClauses; i++) {
         int sat = 0;
@@ -217,8 +218,6 @@ int checkAssignment() {
             throw std::runtime_error("the assignment is not valid!");
         }
     }
-
-    return 1;
 }
 
 //go trough the unsat clauses with the flip counter and DO NOT pick RANDOM unsat clause!!
@@ -353,17 +352,16 @@ void pickAndFlip() {
         } else if (numTrueLit[tClause] == 2) { //find which literal is true and make it critical and decrease its score
             int j = 0;
             while ((var = std::abs(clause[tClause][j]))) {
-                if (((clause[tClause][j] > 0) ==
-                     atom[std::abs(var)])) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
+                if (((clause[tClause][j] > 0) == atom[std::abs(var)])) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
                     critVar[tClause] = var;
                     breaks[var]++;
                     break;
                 }
-                j++;
+                ++j;
             }
         }
         numTrueLit[tClause]--;
-        i++;
+        ++i;
     }
 
 }
@@ -382,7 +380,7 @@ void setupParameters() {
     }
 
     probsBreak.resize(maxNumOccurences + 1);
-    if (fct == 0) {
+    if (use_poly_func) {
         for (int i = 0; i <= maxNumOccurences; ++i) {
             probsBreak[i] = pow((eps + i), -cb);
         }
