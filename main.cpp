@@ -5,18 +5,22 @@
 #include <fstream>
 #include <stdexcept>
 #include <vector>
+#include <limits>
+#include <random>
+#include <cstring>
 
 /*
  * https://www.uni-ulm.de/fileadmin/website_uni_ulm/iui.inst.190/Mitarbeiter/balint/SAT2012.pdf
  */
 
-constexpr size_t MAX_CLAUSE_LENGTH = 10000; //maximum number of literals per clause
+constexpr size_t MAX_CLAUSE_LENGTH = 10; //maximum number of literals per clause
 constexpr size_t STOREBLOCK = 20000;
 constexpr int64_t maxTries = std::numeric_limits<int64_t>::max();
 constexpr int64_t maxFlips = std::numeric_limits<int64_t>::max();
 constexpr bool use_poly_func = true; // exp otherwise
 constexpr bool caching = true;
 constexpr double eps = 1.0;
+constexpr int64_t seed = 1638826429;
 
 /*--------*/
 
@@ -62,8 +66,21 @@ std::vector<double> probsBreak;
 double *probs;
 
 /** Run time variables variables*/
-int64_t seed;
 int64_t flip;
+
+/////////////////////////////
+
+std::default_random_engine& random_engine() {
+    static std::random_device rd;
+    static std::default_random_engine eng(rd());
+    return eng;
+}
+
+float randFrac() {
+    static std::uniform_real_distribution<float> distr(0.0, 1.0);
+    static std::default_random_engine& eng = random_engine();
+    return distr(eng);
+}
 
 void printSolution() {
     std::ofstream fout("result.txt");
@@ -116,7 +133,7 @@ void parseFile(const char* fileName) {
     maxClauseSize = 0;
     size_t *numOccurrenceT = (size_t *) malloc(sizeof(size_t) * (numLiterals + 1));
 
-    int freeStore = 0;
+    size_t freeStore = 0;
     int *tempClause = nullptr;
     int j;
     int lit;
@@ -139,11 +156,11 @@ void parseFile(const char* fileName) {
             if (lit != 0) {
                 ++clauseSize;
                 *tempClause++ = lit;
-                numOccurrenceT[numVars + lit]++;
+                ++numOccurrenceT[numVars + lit];
             } else {
                 *tempClause++ = 0; //0 sentinel as literal!
             }
-            freeStore--;
+            --freeStore;
         } while (lit != 0);
 
         maxClauseSize = std::max(maxClauseSize, clauseSize);
@@ -170,21 +187,21 @@ void parseFile(const char* fileName) {
 void init() {
     int critLit = 0, lit;
     numFalse = 0;
-    for (size_t i = 1; i <= numClauses; i++) {
-        numTrueLit[i] = 0;
-        whereFalse[i] = 0;
+
+    std::memset(numTrueLit, 0, numClauses + 1);
+    std::memset(whereFalse, 0, numClauses + 1);
+    std::memset(breaks, 0, numVars + 1);
+
+    for (size_t i = 1; i <= numVars; ++i) {
+        atom[i] = rand() % 2;
     }
 
-    for (size_t i = 1; i <= numVars; i++) {
-        atom[i] = rand() % 2;
-        breaks[i] = 0;
-    }
     //pass trough all clauses and apply the assignment previously generated
-    for (size_t i = 1; i <= numClauses; i++) {
-        int j = 0;
+    for (size_t i = 1; i <= numClauses; ++i) {
+        size_t j = 0;
         while ((lit = clause[i][j])) {
             if (atom[std::abs(lit)] == (lit > 0)) {
-                numTrueLit[i]++;
+                ++numTrueLit[i];
                 critLit = lit;
             }
             ++j;
@@ -204,17 +221,17 @@ void init() {
 }
 
 void checkAssignment() {
-    int lit;
-    for (size_t i = 1; i <= numClauses; i++) {
-        int sat = 0;
-        int j = 0;
+    for (size_t i = 1; i <= numClauses; ++i) {
+        bool satisf = false;
+        size_t j = 0;
+        int lit;
         while ((lit = clause[i][j])) {
             if (atom[std::abs(lit)] == (lit > 0)) {
-                sat = 1;
+                satisf = true;
             }
-            j++;
+            ++j;
         }
-        if (sat == 0) {
+        if (!satisf) {
             throw std::runtime_error("the assignment is not valid!");
         }
     }
@@ -224,7 +241,7 @@ void checkAssignment() {
 // do not cache the break values but compute them on the fly (this is also the default implementation of WalkSAT in UBCSAT)
 void pickAndFlipNC() {
     size_t tClause;
-    size_t rClause = falseClause[flip % numFalse]; //random unsat clause
+    size_t rClause = falseClause[flip % numFalse];
     double sumProb = 0;
     int i = 0;
     int lit;
@@ -234,17 +251,18 @@ void pickAndFlipNC() {
         //numOccurenceX = numOccurrence[numVars - lit]; //only the negated occurrence of lit will count for break
         int j = 0;
         while ((tClause = occurrence[numVars - lit][j])) {
-            if (numTrueLit[tClause] == 1)
-                breaks[i]++;
-            j++;
+            if (numTrueLit[tClause] == 1) {
+                ++breaks[i];
+            }
+            ++j;
         }
         probs[i] = probsBreak[breaks[i]];
         sumProb += probs[i];
-        i++;
+        ++i;
     }
 
-    double randPosition = (double) (rand()) / RAND_MAX * sumProb;
-    for (i = i - 1; i != 0; i--) {
+    double randPosition = randFrac() * sumProb;
+    for (i = i - 1; i != 0; --i) {
         sumProb -= probs[i];
         if (sumProb <= randPosition)
             break;
@@ -268,8 +286,8 @@ void pickAndFlipNC() {
             whereFalse[falseClause[numFalse]] = whereFalse[tClause];
             whereFalse[tClause] = -1;
         }
-        numTrueLit[tClause]++; //the number of true Lit is increased.
-        i++;
+        ++numTrueLit[tClause]; //the number of true Lit is increased.
+        ++i;
     }
     //2. all clauses that contain the literal -xMakesSat=0 will not be longer satisfied by variable x.
     //all this clauses contained x as a satisfying literal
@@ -281,14 +299,14 @@ void pickAndFlipNC() {
             whereFalse[tClause] = numFalse;
             ++numFalse;
         }
-        numTrueLit[tClause]--;
+        --numTrueLit[tClause];
         ++i;
     }
 }
 
 void pickAndFlip() {
     size_t tClause;
-    size_t rClause = falseClause[flip % numFalse]; //random unsat clause
+    size_t rClause = falseClause[flip % numFalse];
     double sumProb = 0;
     int i = 0;
     int var;
@@ -296,11 +314,11 @@ void pickAndFlip() {
     while ((var = std::abs(clause[rClause][i]))) {
         probs[i] = probsBreak[breaks[var]];
         sumProb += probs[i];
-        i++;
+        ++i;
     }
 
-    double randPosition = (double) (rand()) / RAND_MAX * sumProb;
-    for (i = i - 1; i != 0; i--) {
+    double randPosition = randFrac() * sumProb;
+    for (i = i - 1; i != 0; --i) {
         sumProb -= probs[i];
         if (sumProb <= randPosition)
             break;
@@ -325,17 +343,17 @@ void pickAndFlip() {
             critVar[tClause] = std::abs(xMakesSat); //this variable is now critically responsible for satisfying tClause
             //adapt the scores of the variables
             //the score of x has to be decreased by one because x is critical and will break this clause if fliped.
-            breaks[bestVar]++;
+            ++breaks[bestVar];
         } else {
             //if the clause is satisfied by only one literal then the score has to be increased by one for this var.
             //because fliping this variable will no longer break the clause
             if (numTrueLit[tClause] == 1) {
-                breaks[critVar[tClause]]--;
+                --breaks[critVar[tClause]];
             }
         }
         //if the number of numTrueLit[tClause]>=2 then nothing will change in the scores
-        numTrueLit[tClause]++; //the number of true Lit is increased.
-        i++;
+        ++numTrueLit[tClause]; //the number of true Lit is increased.
+        ++i;
     }
     //2. all clauses that contain the literal -xMakesSat=0 will not be longer satisfied by variable x.
     //all this clauses contained x as a satisfying literal
@@ -350,17 +368,18 @@ void pickAndFlip() {
             --breaks[bestVar];
             //the scores of all variables have to be increased by one ; inclusive x because flipping them will make the clause again sat
         } else if (numTrueLit[tClause] == 2) { //find which literal is true and make it critical and decrease its score
-            int j = 0;
+            size_t j = 0;
             while ((var = std::abs(clause[tClause][j]))) {
-                if (((clause[tClause][j] > 0) == atom[std::abs(var)])) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
+                if (((clause[tClause][j] > 0) ==
+                     atom[std::abs(var)])) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
                     critVar[tClause] = var;
-                    breaks[var]++;
+                    ++breaks[var];
                     break;
                 }
                 ++j;
             }
         }
-        numTrueLit[tClause]--;
+        --numTrueLit[tClause];
         ++i;
     }
 
@@ -381,7 +400,7 @@ void setupParameters() {
 
     probsBreak.resize(maxNumOccurences + 1);
     if (use_poly_func) {
-        for (int i = 0; i <= maxNumOccurences; ++i) {
+        for (size_t i = 0; i <= maxNumOccurences; ++i) {
             probsBreak[i] = pow((eps + i), -cb);
         }
     } else {
@@ -392,8 +411,11 @@ void setupParameters() {
 }
 
 int main(int argc, char *argv[]) {
-    seed = time(nullptr);
-    srand(seed);
+    if (seed != 0) {
+        srand(seed);
+    } else {
+        srand(time(nullptr));
+    }
 
     parseFile(*(argv + 1));
     setupParameters();
@@ -403,7 +425,7 @@ int main(int argc, char *argv[]) {
         init();
         bestNumFalse = numClauses;
 
-        for (flip = 0; flip < maxFlips; flip++) {
+        for (flip = 0; flip < maxFlips; ++flip) {
             if (numFalse == 0)
                 break;
 
@@ -412,7 +434,11 @@ int main(int argc, char *argv[]) {
             } else {
                 pickAndFlipNC();
             }
-            bestNumFalse = std::min(bestNumFalse, numFalse);
+
+            if (numFalse < bestNumFalse) {
+                std::cout << flip << ' ' << numFalse << ' ' << totalTime << std::endl;
+                bestNumFalse = numFalse;
+            }
         }
 
         double tryTime = 0; // elapsed_seconds();

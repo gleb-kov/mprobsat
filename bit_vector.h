@@ -5,6 +5,19 @@
 #include <cstdint>
 #include <climits>
 #include <cassert>
+#include <random>
+
+static inline
+uint64_t Popcnt(uint64_t n) {
+    uint64_t c = 0;
+    c = (n & 0x5555555555555555) + ((n >> 1) & 0x5555555555555555);
+    c = (c & 0x3333333333333333) + ((c >> 2) & 0x3333333333333333);
+    c = (c & 0x0f0f0f0f0f0f0f0f) + ((c >> 4) & 0x0f0f0f0f0f0f0f0f);
+    c = (c & 0x00ff00ff00ff00ff) + ((c >> 8) & 0x00ff00ff00ff00ff);
+    c = (c & 0x0000ffff0000ffff) + ((c >> 16) & 0x0000ffff0000ffff);
+    c = (c & 0x00000000ffffffff) + ((c >> 32) & 0x00000000ffffffff);
+    return (c);
+}
 
 constexpr uint64_t MostSignificantBitCT(uint64_t x) {
     return x > 1 ? 1 + MostSignificantBitCT(x >> 1) : 0;
@@ -24,10 +37,9 @@ struct TBitSeqTraits {
     }
 };
 
-template<typename T = uint64_t>
 class TBitVector {
 public:
-    using TWord = T;
+    using TWord = uint64_t;
     using TTraits = TBitSeqTraits<TWord>;
 
 private:
@@ -59,9 +71,16 @@ public:
         return true;
     }
 
+    void FillRandom(std::default_random_engine &dev) {
+        static std::uniform_int_distribution<uint64_t> distr(0, std::numeric_limits<uint64_t>::max());
+        for (uint64_t &elem : Data_) {
+            elem = distr(dev);
+        }
+    }
+
     [[nodiscard]] bool Test(uint64_t pos) const {
         assert(pos < Size_);
-        return Data_[pos >> TTraits::DivShift] & BitMask(pos & TTraits::ModMask);
+        return Data_[pos >> TTraits::DivShift] & TTraits::BitMask(pos & TTraits::ModMask);
     }
 
     void Reset(uint64_t pos) {
@@ -76,13 +95,13 @@ public:
 
     [[nodiscard]] size_t Count() const {
         size_t count = 0;
-        for (size_t i = 0; i < Data_.size(); ++i) {
-            count += (size_t) PopCount(Data_[i]);
+        for (uint64_t i : Data_) {
+            count += Popcnt(i);
         }
         return count;
     }
 
-    const TWord *Data() const {
+    [[nodiscard]] const TWord *Data() const {
         return Data_.data();
     }
 };
