@@ -18,7 +18,6 @@ constexpr size_t STOREBLOCK = 20000;
 constexpr int64_t maxTries = std::numeric_limits<int64_t>::max();
 constexpr int64_t maxFlips = std::numeric_limits<int64_t>::max();
 constexpr bool use_poly_func = true; // exp otherwise
-constexpr bool caching = true;
 constexpr double eps = 1.0;
 constexpr int64_t seed = 1638826429;
 
@@ -113,8 +112,8 @@ void allocateMemory() {
 void parseFile(const char* fileName) {
     FILE *fp = fopen(fileName, "r");
 
-    char c;
     for (;;) {
+        char c;
         c = fgetc(fp);
         if (c == 'c') //comment line - skip content
             do {
@@ -126,18 +125,14 @@ void parseFile(const char* fileName) {
         }
     }
 
-    // Finished scanning header.
-    //allocating memory to use!
     allocateMemory();
-    maxClauseSize = 0;
+    std::memset(numOccurrence, 0, numLiterals + 1);
     size_t *numOccurrenceT = (size_t *) malloc(sizeof(size_t) * (numLiterals + 1));
+    std::memset(numOccurrenceT, 0, numLiterals + 1);
 
+    maxClauseSize = 0;
     size_t freeStore = 0;
     int *tempClause = nullptr;
-    int lit;
-
-    std::memset(numOccurrence, 0, numLiterals + 1);
-    std::memset(numOccurrenceT, 0, numLiterals + 1);
 
     for (size_t i = 1; i <= numClauses; ++i) {
         if (freeStore < MAX_CLAUSE_LENGTH) {
@@ -146,6 +141,7 @@ void parseFile(const char* fileName) {
         }
         clause[i] = tempClause;
         size_t clauseSize = 0;
+        int lit;
         do {
             fscanf(fp, "%i", &lit);
             if (lit != 0) {
@@ -168,6 +164,7 @@ void parseFile(const char* fileName) {
 
     for (size_t i = 1; i <= numClauses; ++i) {
         size_t j = 0;
+        int lit;
         while ((lit = clause[i][j])) {
             occurrence[lit + numVars][numOccurrence[lit + numVars]++] = i;
             ++j;
@@ -229,73 +226,6 @@ void checkAssignment() {
         if (!satisf) {
             throw std::runtime_error("the assignment is not valid!");
         }
-    }
-}
-
-//go trough the unsat clauses with the flip counter and DO NOT pick RANDOM unsat clause!!
-// do not cache the break values but compute them on the fly (this is also the default implementation of WalkSAT in UBCSAT)
-void pickAndFlipNC() {
-    size_t tClause;
-    size_t rClause = falseClause[flip % numFalse];
-    double sumProb = 0;
-    int i = 0;
-    int lit;
-
-    while ((lit = clause[rClause][i])) {
-        breaks[i] = 0;
-        //numOccurenceX = numOccurrence[numVars - lit]; //only the negated occurrence of lit will count for break
-        int j = 0;
-        while ((tClause = occurrence[numVars - lit][j])) {
-            if (numTrueLit[tClause] == 1) {
-                ++breaks[i];
-            }
-            ++j;
-        }
-        probs[i] = probsBreak[breaks[i]];
-        sumProb += probs[i];
-        ++i;
-    }
-
-    double randPosition = randFrac() * sumProb;
-    for (i = i - 1; i != 0; --i) {
-        sumProb -= probs[i];
-        if (sumProb <= randPosition)
-            break;
-    }
-
-    int bestVar = std::abs(clause[rClause][i]);
-    //if x=1 then all clauses containing -x will be made sat after fliping x
-    //if x=0 then all clauses containing x will be made sat after fliping x
-    //tells which literal of x will make the clauses where it appears sat.
-    int xMakesSat = atom[bestVar] ? -bestVar : bestVar;
-    atom[bestVar] = 1 - atom[bestVar];
-
-    //1. Clauses that contain xMakeSAT will get SAT if not already SAT
-    //numOccurenceX = numOccurrence[numVars + xMakesSat];
-    i = 0;
-    while ((tClause = occurrence[xMakesSat + numVars][i])) {
-        //if the clause is unsat it will become SAT so it has to be removed from the list of unsat-clauses.
-        if (numTrueLit[tClause] == 0) {
-            //remove from unsat-list
-            falseClause[whereFalse[tClause]] = falseClause[--numFalse]; //overwrite this clause with the last clause in the list.
-            whereFalse[falseClause[numFalse]] = whereFalse[tClause];
-            whereFalse[tClause] = -1;
-        }
-        ++numTrueLit[tClause]; //the number of true Lit is increased.
-        ++i;
-    }
-    //2. all clauses that contain the literal -xMakesSat=0 will not be longer satisfied by variable x.
-    //all this clauses contained x as a satisfying literal
-    //numOccurenceX = numOccurrence[numVars - xMakesSat];
-    i = 0;
-    while ((tClause = occurrence[numVars - xMakesSat][i])) {
-        if (numTrueLit[tClause] == 1) { //then xMakesSat=1 was the satisfying literal.
-            falseClause[numFalse] = tClause;
-            whereFalse[tClause] = numFalse;
-            ++numFalse;
-        }
-        --numTrueLit[tClause];
-        ++i;
     }
 }
 
@@ -406,12 +336,7 @@ void setupParameters() {
 }
 
 int main(int argc, char *argv[]) {
-    if (seed != 0) {
-        srand(seed);
-    } else {
-        srand(time(nullptr));
-    }
-
+    srand(seed);
     parseFile(*(argv + 1));
     setupParameters();
 
@@ -424,11 +349,7 @@ int main(int argc, char *argv[]) {
             if (numFalse == 0)
                 break;
 
-            if (caching) {
-                pickAndFlip();
-            } else {
-                pickAndFlipNC();
-            }
+            pickAndFlip();
 
             if (numFalse < bestNumFalse) {
                 std::cout << flip << ' ' << numFalse << ' ' << totalTime << std::endl;
