@@ -69,19 +69,19 @@ int64_t flip;
 
 /////////////////////////////
 
-std::default_random_engine& random_engine() {
+std::default_random_engine& Random_engine() {
     static std::random_device rd;
     static std::default_random_engine eng(rd());
     return eng;
 }
 
-float randFrac() {
+float RandFrac() {
     static std::uniform_real_distribution<float> distr(0.0, 1.0);
-    static std::default_random_engine& eng = random_engine();
+    static std::default_random_engine& eng = Random_engine();
     return distr(eng);
 }
 
-void printSolution() {
+void PrintSolution() {
     std::ofstream fout("result.txt");
     for (size_t i = 1; i <= numVars; ++i) {
         if (!atom[i]) {
@@ -91,7 +91,7 @@ void printSolution() {
     }
 }
 
-void allocateMemory() {
+void AllocateMemory() {
     // Allocating memory for the instance data (independent from the assignment).
     numLiterals = numVars * 2;
     atom = (char *) malloc(sizeof(char) * (numVars + 1));
@@ -109,7 +109,7 @@ void allocateMemory() {
     breaks = (int *) malloc(sizeof(int) * (numVars + 1));
 }
 
-void parseFile(const char* fileName) {
+void ParseFile(const char* fileName) {
     FILE *fp = fopen(fileName, "r");
 
     for (;;) {
@@ -125,7 +125,7 @@ void parseFile(const char* fileName) {
         }
     }
 
-    allocateMemory();
+    AllocateMemory();
     std::memset(numOccurrence, 0, numLiterals + 1);
     size_t *numOccurrenceT = (size_t *) malloc(sizeof(size_t) * (numLiterals + 1));
     std::memset(numOccurrenceT, 0, numLiterals + 1);
@@ -176,17 +176,13 @@ void parseFile(const char* fileName) {
     fclose(fp);
 }
 
-void init() {
+void InitSatInfo() {
     int critLit = 0, lit;
     numFalse = 0;
 
     std::memset(numTrueLit, 0, numClauses + 1);
     std::memset(whereFalse, 0, numClauses + 1);
     std::memset(breaks, 0, numVars + 1);
-
-    for (size_t i = 1; i <= numVars; ++i) {
-        atom[i] = rand() % 2;
-    }
 
     //pass trough all clauses and apply the assignment previously generated
     for (size_t i = 1; i <= numClauses; ++i) {
@@ -212,7 +208,7 @@ void init() {
     }
 }
 
-void checkAssignment() {
+void CheckAssignment() {
     for (size_t i = 1; i <= numClauses; ++i) {
         bool satisf = false;
         size_t j = 0;
@@ -229,7 +225,7 @@ void checkAssignment() {
     }
 }
 
-void pickAndFlip() {
+void PickAndFlip() {
     size_t tClause;
     size_t rClause = falseClause[flip % numFalse];
     double sumProb = 0;
@@ -242,7 +238,7 @@ void pickAndFlip() {
         ++i;
     }
 
-    double randPosition = randFrac() * sumProb;
+    double randPosition = RandFrac() * sumProb;
     for (i = i - 1; i != 0; --i) {
         sumProb -= probs[i];
         if (sumProb <= randPosition)
@@ -310,7 +306,7 @@ void pickAndFlip() {
 
 }
 
-void setupParameters() {
+void SetupParameters() {
     double cb = 5.4;
 
     if (maxClauseSize <= 3) {
@@ -337,41 +333,40 @@ void setupParameters() {
 
 int main(int argc, char *argv[]) {
     srand(seed);
-    parseFile(*(argv + 1));
-    setupParameters();
+    ParseFile(*(argv + 1));
+    SetupParameters();
 
-    double totalTime = 0;
     for (int64_t iter = 0; iter < maxTries; ++iter) {
-        init();
+        for (size_t i = 1; i <= numVars; ++i) {
+            atom[i] = rand() % 2;
+        }
+
+        InitSatInfo();
         bestNumFalse = numClauses;
 
         for (flip = 0; flip < maxFlips; ++flip) {
             if (numFalse == 0)
                 break;
 
-            pickAndFlip();
+            PickAndFlip();
 
             if (numFalse < bestNumFalse) {
-                std::cout << flip << ' ' << numFalse << ' ' << totalTime << std::endl;
+                std::cout << flip << ' ' << numFalse << std::endl;
                 bestNumFalse = numFalse;
             }
         }
 
-        double tryTime = 0; // elapsed_seconds();
-        totalTime += tryTime;
-
         if (numFalse == 0) {
-            checkAssignment();
+            CheckAssignment();
             std::cout << "SATISFIABLE\n";
-            printSolution();
+            PrintSolution();
             break;
         } else {
             std::cout << "UNKNOWN best=" << bestNumFalse << '\n';
         }
     }
 
-    std::cout << "Total time: " << totalTime
-              << ", numFlips: " << flip
+    std::cout << "numFlips: " << flip
               << ", avg. flips/variable: " << (double) flip / (double) numVars
               << ", avg. flips/clause: " << (double) flip / (double) numClauses
               << std::endl;
