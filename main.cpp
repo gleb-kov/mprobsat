@@ -13,7 +13,7 @@
  * https://www.uni-ulm.de/fileadmin/website_uni_ulm/iui.inst.190/Mitarbeiter/balint/SAT2012.pdf
  */
 
-constexpr size_t MAX_CLAUSE_LENGTH = 10; //maximum number of literals per clause
+constexpr size_t MAX_CLAUSE_LENGTH = 10; //maximum number of literals per clause; 10 is enough for reimage problems
 constexpr size_t STOREBLOCK = 20000;
 constexpr int64_t maxTries = std::numeric_limits<int64_t>::max();
 constexpr int64_t maxFlips = std::numeric_limits<int64_t>::max();
@@ -114,7 +114,6 @@ void parseFile(const char* fileName) {
     FILE *fp = fopen(fileName, "r");
 
     char c;
-    // Start scanning the header and set numVars and numClauses
     for (;;) {
         c = fgetc(fp);
         if (c == 'c') //comment line - skip content
@@ -135,22 +134,18 @@ void parseFile(const char* fileName) {
 
     size_t freeStore = 0;
     int *tempClause = nullptr;
-    int j;
     int lit;
-    size_t clauseSize;
-    for (size_t i = 0; i < numLiterals + 1; ++i) {
-        numOccurrence[i] = 0;
-        numOccurrenceT[i] = 0;
-    }
+
+    std::memset(numOccurrence, 0, numLiterals + 1);
+    std::memset(numOccurrenceT, 0, numLiterals + 1);
 
     for (size_t i = 1; i <= numClauses; ++i) {
-        whereFalse[i] = 0;
         if (freeStore < MAX_CLAUSE_LENGTH) {
             tempClause = (int *) malloc(sizeof(int) * STOREBLOCK);
             freeStore = STOREBLOCK;
         }
         clause[i] = tempClause;
-        clauseSize = 0;
+        size_t clauseSize = 0;
         do {
             fscanf(fp, "%i", &lit);
             if (lit != 0) {
@@ -172,7 +167,7 @@ void parseFile(const char* fileName) {
     }
 
     for (size_t i = 1; i <= numClauses; ++i) {
-        j = 0;
+        size_t j = 0;
         while ((lit = clause[i][j])) {
             occurrence[lit + numVars][numOccurrence[lit + numVars]++] = i;
             ++j;
