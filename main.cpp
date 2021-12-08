@@ -29,7 +29,7 @@ size_t numClauses;
 size_t numLiterals;
 
 /** The value of the variables. The numbering starts at 1 and the possible values are 0 or 1. */
-char *atom;
+TBitVector litValue;
 /** The clauses of the formula represented as: clause[clause_number][literal_number].
  * The clause and literal numbering start both at 1. literal and clause 0 0 is sentinel*/
 int **clause;
@@ -69,22 +69,23 @@ int64_t flip;
 
 /////////////////////////////
 
-std::default_random_engine& Random_engine() {
+auto& Random_engine() {
     static std::random_device rd;
-    static std::default_random_engine eng(rd());
+    static std::mt19937 eng(seed);
+    // static std::default_random_engine eng(rd());
     return eng;
 }
 
 float RandFrac() {
     static std::uniform_real_distribution<float> distr(0.0, 1.0);
-    static std::default_random_engine& eng = Random_engine();
+    static auto& eng = Random_engine();
     return distr(eng);
 }
 
 void PrintSolution() {
     std::ofstream fout("result.txt");
     for (size_t i = 1; i <= numVars; ++i) {
-        if (!atom[i]) {
+        if (!litValue.Test(i)) {
             fout << '-';
         }
         fout << i << ' ';
@@ -94,7 +95,7 @@ void PrintSolution() {
 void AllocateMemory() {
     // Allocating memory for the instance data (independent from the assignment).
     numLiterals = numVars * 2;
-    atom = (char *) malloc(sizeof(char) * (numVars + 1));
+    litValue.Resize(numVars + 1);
     clause = (int **) malloc(sizeof(int *) * (numClauses + 1));
     numOccurrence = (size_t *) malloc(sizeof(size_t) * (numLiterals + 1));
     occurrence = (size_t **) malloc(sizeof(size_t *) * (numLiterals + 1));
@@ -188,7 +189,7 @@ void InitSatInfo() {
     for (size_t i = 1; i <= numClauses; ++i) {
         size_t j = 0;
         while ((lit = clause[i][j])) {
-            if (atom[std::abs(lit)] == (lit > 0)) {
+            if (litValue.Test(std::abs(lit)) == (lit > 0)) {
                 ++numTrueLit[i];
                 critLit = lit;
             }
@@ -214,7 +215,7 @@ void CheckAssignment() {
         size_t j = 0;
         int lit;
         while ((lit = clause[i][j])) {
-            if (atom[std::abs(lit)] == (lit > 0)) {
+            if (litValue.Test(std::abs(lit)) == (lit > 0)) {
                 satisf = true;
             }
             ++j;
@@ -249,8 +250,8 @@ void PickAndFlip() {
     //if x=1 then all clauses containing -x will be made sat after fliping x
     //if x=0 then all clauses containing x will be made sat after fliping x
     //tells which literal of x will make the clauses where it appears sat.
-    int xMakesSat = atom[bestVar] ? -bestVar : bestVar;
-    atom[bestVar] = 1 - atom[bestVar];
+    int xMakesSat = litValue.Test(bestVar) ? -bestVar : bestVar;
+    litValue.Revert(bestVar);
 
     //1. all clauses that contain the literal xMakesSat will become SAT, if they where not already sat.
     i = 0;
@@ -292,7 +293,7 @@ void PickAndFlip() {
             size_t j = 0;
             while ((var = std::abs(clause[tClause][j]))) {
                 if (((clause[tClause][j] > 0) ==
-                     atom[std::abs(var)])) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
+                     litValue.Test(std::abs(var)))) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
                     critVar[tClause] = var;
                     ++breaks[var];
                     break;
@@ -337,9 +338,7 @@ int main(int argc, char *argv[]) {
     SetupParameters();
 
     for (int64_t iter = 0; iter < maxTries; ++iter) {
-        for (size_t i = 1; i <= numVars; ++i) {
-            atom[i] = rand() % 2;
-        }
+        litValue.FillRandom(Random_engine());
 
         InitSatInfo();
         bestNumFalse = numClauses;
