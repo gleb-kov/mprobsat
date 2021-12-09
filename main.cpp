@@ -17,7 +17,7 @@
 constexpr size_t MAX_CLAUSE_LENGTH = 10; //maximum number of literals per clause; 10 is enough for reimage problems
 constexpr size_t STOREBLOCK = 20000;
 constexpr uint64_t maxTries = std::numeric_limits<uint64_t>::max();
-constexpr uint64_t maxFlips = 100000; // std::numeric_limits<int64_t>::max();
+constexpr uint64_t maxFlips = 1500000;
 constexpr bool use_poly_func = true; // exp otherwise
 constexpr double eps = 1.0;
 constexpr int64_t seed = 1638826429;
@@ -381,7 +381,7 @@ bool MakeIteration(uint64_t iteration_idx) {
             InitSatInfo();
 
             for (flip = 0; flip < maxFlips; ++flip) {
-                if (numFalse < 800) {
+                if (numFalse < 10) {
                     litValue = bestKnownLitValue;
                     return true;
                 }
