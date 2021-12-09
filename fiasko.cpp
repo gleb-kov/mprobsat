@@ -378,7 +378,7 @@ bool MakeIteration(uint64_t iteration_idx) {
 
             for (flip = 0; flip < maxFlips; ++flip) {
                 InitSatInfo();
-                if (numFalse < 20) {
+                if (numFalse < 50) {
                     litValue = bestKnownLitValue;
                     return true;
                 }
@@ -418,7 +418,7 @@ int main(int argc, char *argv[]) {
             CheckAssignment();
             break;
         } else {
-            std::cout << "UNKNOWN best=" << bestNumFalse << '\n';
+            std::cout << "UNKNOWN  best=" << bestNumFalse << '\n';
         }
     }
 
