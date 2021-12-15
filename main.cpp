@@ -21,7 +21,7 @@ constexpr uint64_t maxFlips = 1500000;
 constexpr bool use_poly_func = true; // exp otherwise
 constexpr double eps = 1.0;
 constexpr int64_t seed = 1638826429;
-constexpr size_t merging_block_size = 4;
+constexpr size_t mergingBlockSize = 4;
 
 /*--------*/
 
@@ -307,8 +307,8 @@ void PickAndFlip() {
         } else if (numTrueLit[tClause] == 2) { //find which literal is true and make it critical and decrease its score
             size_t j = 0;
             while ((var = std::abs(clause[tClause][j]))) {
-                if (((clause[tClause][j] > 0) ==
-                     litValue.Test(std::abs(var)))) { //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
+                //x can not be the var anymore because it was flipped //&&(xMakesSat!=var)
+                if (((clause[tClause][j] > 0) == litValue.Test(std::abs(var)))) {
                     critVar[tClause] = var;
                     ++breaks[var];
                     break;
@@ -358,38 +358,43 @@ bool MakeIteration(uint64_t iteration_idx) {
     std::shuffle(vars_permutation.begin() + 1, vars_permutation.end(), Random_engine()); // 0 is reserved
     bestNumFalse = numClauses;
 
-    for (size_t merge_var_idx = 0; merge_var_idx <= (numVars + merging_block_size - 1) / merging_block_size; ++merge_var_idx) {
+    const size_t mergeVarsCnt = (numVars + mergingBlockSize - 1) / mergingBlockSize;
+
+    for (size_t mergeVarIdx = 0; mergeVarIdx < mergeVarsCnt; ++mergeVarIdx) {
         uint64_t init_merge_var_mask = 0;
-        for (size_t var_sub_idx = 0; var_sub_idx < merging_block_size; ++var_sub_idx) {
-            size_t atomIdx = merge_var_idx * merging_block_size + var_sub_idx;
+        size_t mergeVarSubIdx = 0;
+        for (; mergeVarSubIdx < mergingBlockSize; ++mergeVarSubIdx) {
+            size_t atomIdx = mergeVarIdx * mergingBlockSize + mergeVarSubIdx;
             size_t varIdx = vars_permutation[atomIdx + 1];
             init_merge_var_mask = (init_merge_var_mask << 1u) | litValue.Test(varIdx);
         }
 
-        for (uint64_t merge_var_mask = init_merge_var_mask; merge_var_mask < (1u << merging_block_size); ++merge_var_mask) {
-            uint64_t tmp_merge_var_mask = merge_var_mask;
-            for (size_t var_sub_idx = merging_block_size; var_sub_idx >= 1; --var_sub_idx) {
-                size_t atomIdx = merge_var_idx * merging_block_size + var_sub_idx - 1;
+        for (uint64_t mergeVarMask = init_merge_var_mask;
+             mergeVarMask < (1u << mergeVarSubIdx); ++mergeVarMask)
+        {
+            uint64_t tmpMergeVarMask = mergeVarMask;
+            for (size_t varSubIdx = mergeVarSubIdx; varSubIdx >= 1; --varSubIdx) {
+                size_t atomIdx = mergeVarIdx * mergingBlockSize + varSubIdx - 1;
                 size_t varIdx = vars_permutation[atomIdx + 1];
                 litValue.Reset(varIdx);
-                if (tmp_merge_var_mask & 1u) {
+                if (tmpMergeVarMask & 1u) {
                     litValue.Set(varIdx);
                 }
-                tmp_merge_var_mask >>= 1u;
+                tmpMergeVarMask >>= 1u;
             }
 
             InitSatInfo();
 
             for (flip = 0; flip < maxFlips; ++flip) {
-                if (numFalse < 10) {
-                    litValue = bestKnownLitValue;
+                if (numFalse == 0) {
                     return true;
                 }
 
                 PickAndFlip();
 
                 if (numFalse < bestNumFalse) {
-                    std::cout << "numFalse: " << numFalse << ", iteration: " << iteration_idx << '.' << merge_var_idx << '.' << flip << std::endl;
+                    std::cout << "numFalse: " << numFalse << ", iteration: " << iteration_idx << '.' << mergeVarIdx
+                              << '.' << flip << std::endl;
                     bestNumFalse = numFalse;
                     bestKnownLitValue = litValue;
                 }
